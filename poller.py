@@ -200,10 +200,30 @@ def is_available_venue_date(page_text, cfg):
 
     Set venue_code (one) or venue_codes (list). With a list, it's open when
     ANY of them is bookable for the date.
+
+    Set format_filter (e.g. "PXL") to only fire when that specific screen
+    format is showing at the venue, not just any screen. BMS's page embeds
+    one big JSON "venue-card" block per theatre containing both its booking
+    link and all its showtime formats, so we scope the format search to the
+    matching venue's own block to avoid matching some other theatre's screen.
     """
     date = cfg["requested_date"]
     codes = cfg.get("venue_codes") or [cfg["venue_code"]]
-    return any("/{}/{}".format(code, date) in page_text for code in codes)
+    fmt = cfg.get("format_filter")
+
+    if not fmt:
+        return any("/{}/{}".format(code, date) in page_text for code in codes)
+
+    card_starts = [m.start() for m in re.finditer(r'"type":"venue-card"', page_text)]
+    for i, start in enumerate(card_starts):
+        end = card_starts[i + 1] if i + 1 < len(card_starts) else len(page_text)
+        block = page_text[start:end]
+        for code in codes:
+            if "/{}/{}".format(code, date) not in block:
+                continue
+            if '"screenAttr":"{}"'.format(fmt) in block or '"format":"{}"'.format(fmt) in block:
+                return True
+    return False
 
 
 def is_available(page_text, cfg):
